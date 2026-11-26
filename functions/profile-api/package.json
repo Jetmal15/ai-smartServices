@@ -1,0 +1,13 @@
+{
+  "name": "profile-api",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "node-appwrite": "^32.0.0"
+  }
+}
