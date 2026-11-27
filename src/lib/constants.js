@@ -4,10 +4,10 @@ export const APP_TAGLINE = 'AI-Based Complaint Management and Department Notific
 /** Sample FET department list – adjust to match the real faculty structure. */
 export const FET_DEPARTMENTS = [
   'Software Engineering',
-  'Computer Systems Engineering',
+  'Information Technology',
   'Electronic Engineering',
   'Telecommunication Engineering',
-  'Information Technology',
+  'Data Science',
 ]
 
 /** Lifecycle order: Submitted -> Under Review -> In Progress -> Resolved -> Closed. New complaints start as `submitted`. */

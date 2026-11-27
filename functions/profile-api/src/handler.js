@@ -32,10 +32,10 @@ export const MANAGED_LABELS = Object.freeze([ROLES.ADMIN, ROLES.DEPARTMENT])
 /** Students' academic programs. KEEP IN SYNC with FET_DEPARTMENTS in src/lib/constants.js (a test checks this). */
 export const DEPARTMENTS = Object.freeze([
   'Software Engineering',
-  'Computer Systems Engineering',
+  'Information Technology',
   'Electronic Engineering',
   'Telecommunication Engineering',
-  'Information Technology',
+  'Data Science',
 ])
 
 export const STATUSES = Object.freeze({ ACTIVE: 'active', DISABLED: 'disabled' })
