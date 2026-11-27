@@ -40,7 +40,7 @@ export function toComplaintError(error, fallback = 'Something went wrong. Please
 export const isSessionError = (error) =>
   (error instanceof AppwriteException && error.code === 401) || (error instanceof ComplaintError && error.status === 401)
 
-/** Calls an action of one of the Appwrite Functions (complaint-api, admin-api) and returns its data. Throws ComplaintError. */
+/** Calls an action of one of the Appwrite Functions (complaint-api, profile-api) and returns its data. Throws ComplaintError. */
 export async function callFunction(functionId, action, payload = {}) {
   assertAppwriteConfigured()
   let execution
@@ -213,13 +213,4 @@ export async function applyAiPriority(complaintId) {
 /** Administrators only: move the complaint to another category (and so to that category's department). */
 export async function reassignComplaint({ complaintId, categoryId }) {
   return detail(await call('complaint.reassign', { complaintId, categoryId }))
-}
-
-/**
- * Administrators only: every complaint, with search, filters and paging.
- * params: { search, status, categoryId, departmentId, sort: 'newest' | 'oldest', limit, offset }
- */
-export async function adminListComplaints(params = {}) {
-  const { complaints, total, truncated } = await call('admin.listComplaints', params)
-  return { complaints, total, truncated: Boolean(truncated) }
 }

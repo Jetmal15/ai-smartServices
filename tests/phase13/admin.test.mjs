@@ -1,10 +1,10 @@
 // Phase 13 – administrator dashboard tests. Run: npm run test:phase13
-// The REAL admin-api, complaint-api and profile-api handlers against in-memory backends built from database/schema.js.
+// The REAL integrated admin module, complaint-api and profile-api handlers against in-memory backends built from database/schema.js.
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { TABLE_IDS } from '../../database/schema.js'
-import { handle as handleAdmin } from '../../functions/admin-api/src/handler.js'
+import { handle as handleAdmin } from '../../functions/complaint-api/src/admin/handler.js'
 import { handle as handleComplaints } from '../../functions/complaint-api/src/handler.js'
 import { generateTemporaryPassword, handle as handleProfile, isAuthorizedAdminEmail } from '../../functions/profile-api/src/handler.js'
 import { createDatabaseServices } from '../../src/services/db/factory.js'
@@ -44,7 +44,7 @@ const ACTIONS = ['dashboard.stats', 'reports.summary', 'department.list', 'depar
 
 /* ============================================================== only administrators */
 
-test('SECURITY: every admin-api action is refused to students, staff and guests', async () => {
+test('SECURITY: every administrator action is refused to students, staff and guests', async () => {
   const t = await setup()
   const before = JSON.stringify([t.rows(TABLE_IDS.departments), t.rows(TABLE_IDS.categories), t.rows(TABLE_IDS.departmentUsers), t.audit()])
   for (const action of ACTIONS) {
@@ -363,7 +363,7 @@ test('COMPLAINTS: administrators view, search and filter every complaint; others
   const made = []
   for (const [i, title] of titles.entries()) made.push(await t.submit(`s00${(i % 3) + 1}`, cats[i], title))
   ok(await t.complaint('clean1', { action: 'complaint.updateStatus', complaintId: made[0].id, status: 'under_review', expectedStatus: 'submitted' }))
-  const list = (extra) => t.complaint('admin1', { action: 'admin.listComplaints', ...extra })
+  const list = (extra) => t.complaint('admin1', { action: 'admin.complaints.list', ...extra })
   const names = (res) => res.body.complaints.map((c) => c.title)
 
   assert.equal((await list({ limit: 50 })).body.total, 6)
@@ -388,7 +388,7 @@ test('COMPLAINTS: administrators view, search and filter every complaint; others
   const detail = await t.complaint('admin1', { action: 'complaint.get', complaintId: made[0].id })
   assert.equal(detail.body.complaint.status, 'under_review')
   assert.ok(detail.body.history.length >= 2)
-  for (const who of ['s001', 'clean1']) assert.equal((await t.complaint(who, { action: 'admin.listComplaints' })).status, 403, who)
+  for (const who of ['s001', 'clean1']) assert.equal((await t.complaint(who, { action: 'admin.complaints.list' })).status, 403, who)
   for (const bad of [{ status: 'x' }, { categoryId: '../x' }, { departmentId: '../x' }, { departmentId: 5 }, { sort: 'size' }, { search: 'x'.repeat(101) }]) assert.equal((await list(bad)).status, 400, JSON.stringify(bad))
 })
 
@@ -535,7 +535,7 @@ test('the administrator screens exist, are admin-only, and talk only to the trus
   assert.ok(service.includes('ADMIN_FUNCTION_ID'))
   const pages = ['AdminDashboardPage', 'AdminDepartmentsPage', 'AdminCategoriesPage', 'AdminReportsPage', 'AdminComplaintsPage'].map((p) => read(`../../src/pages/admin/${p}.jsx`)).join('\n')
   assert.ok(!/updateRow|createRow|deleteRow|tablesDB/.test(pages), 'no direct database writes from the admin pages')
-  assert.ok(!/services\/db\/index\.js/.test(read('../../src/pages/admin/AdminDepartmentsPage.jsx') + read('../../src/pages/admin/AdminCategoriesPage.jsx')), 'departments and categories are managed through admin-api, not the browser database client')
+  assert.ok(!/services\/db\/index\.js/.test(read('../../src/pages/admin/AdminDepartmentsPage.jsx') + read('../../src/pages/admin/AdminCategoriesPage.jsx')), 'departments and categories are managed through the server (complaint-api admin module), not the browser database client')
   for (const label of ['Total complaints', 'Pending', 'In progress', 'Resolved', 'Closed', 'Total students', 'Department staff', 'Departments']) assert.ok(read('../../src/pages/admin/AdminDashboardPage.jsx').includes(label), label)
   for (const label of ['Complaints by category', 'Complaints by department', 'Status distribution', 'Resolution']) assert.ok(read('../../src/pages/admin/AdminReportsPage.jsx').includes(label), label)
   const users = read('../../src/pages/admin/UsersPage.jsx') + read('../../src/components/admin/CreateUserModal.jsx')

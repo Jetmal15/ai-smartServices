@@ -19,7 +19,7 @@ const LINKS = [
   { to: PATHS.admin.reports, label: 'Reports' },
 ]
 
-/** The administrator's overview. Every number is counted by the server (admin-api), which only answers administrators. */
+/** The administrator's overview. Every number is counted by the server (complaint-api, administrator module), which only answers administrators. */
 export default function AdminDashboardPage() {
   const data = useAsyncData(load, 'admin-dashboard', adminService.isSessionError)
   if (data.status === 'loading') return <LoadingSpinner center label="Loading the dashboard…" />

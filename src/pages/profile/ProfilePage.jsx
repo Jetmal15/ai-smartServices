@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Hash, Lock, Mail, User } from 'lucide-react'
 import { Alert, Badge, Button, Card, ErrorMessage, Input, LoadingSpinner, Select } from '../../components/ui/index.js'
 import { useAuth } from '../../hooks/useAuth.js'
@@ -163,6 +163,12 @@ function EditProfileForm({ profile }) {
 /** One profile page for all three roles; what it shows and allows depends on the user's role. */
 export default function ProfilePage() {
   const { profile, profileStatus, profileError, refreshProfile } = useAuth()
+
+  // The profile is loaded once at sign-in. Re-load it whenever this page opens so changes made by an
+  // administrator in the meantime (for example a newly assigned department) show up without signing out.
+  useEffect(() => {
+    refreshProfile()
+  }, [refreshProfile])
 
   if (profileStatus === 'error') {
     return (

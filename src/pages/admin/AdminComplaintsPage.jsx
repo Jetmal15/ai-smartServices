@@ -9,7 +9,6 @@ import { COMPLAINT_STATUS } from '../../lib/constants.js'
 import { controlClasses } from '../../lib/styles.js'
 import { PATHS } from '../../routes/paths.js'
 import * as adminService from '../../services/adminService.js'
-// import * as complaintService from '../../services/complaintService.js'
 
 const PAGE_SIZE = 10
 const SEARCH_DELAY_MS = 350
@@ -35,7 +34,6 @@ export default function AdminComplaintsPage() {
   }, [searchText])
 
   const options = useAsyncData(async () => ({ categories: await adminService.listCategories(), departments: await adminService.listDepartments() }), 'options', adminService.isSessionError)
-  // const list = useAsyncData(() => complaintService.adminListComplaints({ ...filters, limit: PAGE_SIZE, offset: page * PAGE_SIZE }), JSON.stringify([filters, page]), complaintService.isSessionError)
   const list = useAsyncData(() => adminService.listAdminComplaints({ ...filters, limit: PAGE_SIZE, offset: page * PAGE_SIZE }), JSON.stringify([filters, page]), adminService.isSessionError)
 
   const lists = options.data ?? options.previous

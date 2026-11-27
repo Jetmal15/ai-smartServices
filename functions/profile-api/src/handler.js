@@ -248,13 +248,21 @@ async function ensureProfile(account, deps, seed) {
  * Request parsing + authentication
  * ------------------------------------------------------------------ */
 
+/** No legitimate request is anywhere near this size. */
+export const MAX_BODY_CHARS = 64 * 1024
+
 function parseBody(req) {
-  if (req.bodyJson && typeof req.bodyJson === 'object') return req.bodyJson
+  const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
+  if (isObject(req.bodyJson)) {
+    if (JSON.stringify(req.bodyJson).length > MAX_BODY_CHARS) throw new HttpError(413, 'payload_too_large', 'That request is too large.')
+    return req.bodyJson
+  }
   const raw = req.bodyText ?? (typeof req.body === 'string' ? req.body : '')
+  if (raw.length > MAX_BODY_CHARS) throw new HttpError(413, 'payload_too_large', 'That request is too large.')
   if (!raw) return {}
   try {
     const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+    if (isObject(parsed)) return parsed
   } catch {
     /* fall through */
   }
@@ -613,7 +621,7 @@ export async function handle({ req }, deps) {
   try {
     const caller = await authenticate(req, deps)
     const body = parseBody(req)
-    if (!Object.hasOwn(ACTIONS, String(body.action))) throw new HttpError(400, 'unknown_action', 'Unknown action.')
+    if (typeof body.action !== 'string' || !Object.hasOwn(ACTIONS, body.action)) throw new HttpError(400, 'unknown_action', 'Unknown action.')
     return { status: 200, body: { ok: true, ...(await ACTIONS[body.action](caller, body, deps)) } }
   } catch (error) {
     if (error instanceof HttpError) {

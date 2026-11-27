@@ -27,7 +27,7 @@ const deps = createDeps({
   projectId: need('VITE_APPWRITE_PROJECT_ID (in .env)', env.VITE_APPWRITE_PROJECT_ID?.trim()),
   apiKey: need('APPWRITE_API_KEY (environment variable)', env.APPWRITE_API_KEY?.trim()),
   databaseId: need('VITE_APPWRITE_DATABASE_ID (in .env)', env.VITE_APPWRITE_DATABASE_ID?.trim()),
-  ids: { complaints: 'complaints', history: 'complaint_history', notes: 'complaint_notes', aiSummaries: 'ai_summaries', aiFunction: 'ai-analysis', users: 'users', departments: 'departments', categories: 'categories', departmentUsers: 'department_users', notifications: 'notifications', bucket: 'complaint-attachments' },
+  ids: { complaints: 'complaints', history: 'complaint_history', notes: 'complaint_notes', aiSummaries: 'ai_summaries', users: 'users', departments: 'departments', categories: 'categories', departmentUsers: 'department_users', notifications: 'notifications', bucket: 'complaint-attachments' },
   log: (m) => console.warn('  !', m),
 })
 try {

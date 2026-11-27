@@ -221,7 +221,7 @@ test('inactive category, or a category whose department is inactive, cannot be u
 })
 
 test('browser-side validation gives the same verdicts as the server', async () => {
-  const t = await setup()
+  await setup()
   const cases = [
     {}, { title: '   ' }, { ...VALID, title: 'Hi' }, { ...VALID, title: '!!!!!!!!' }, { ...VALID, description: 'short' },
     { ...VALID, title: 'x'.repeat(151) }, { ...VALID, description: 'd'.repeat(5001) }, { ...VALID, location: 'l'.repeat(301) }, { ...VALID, categoryId: '' }, VALID,
@@ -426,7 +426,12 @@ test('department staff see exactly the complaints routed to their department(s)'
   assert.equal((await list('staff-two', { status: 'submitted', limit: 1, offset: 1 })).body.complaints[0].title, 'Dirty corridor on floor 2')
   assert.equal(err(await list('staff-two', { status: 'weird' })), 'validation_failed')
 
-  for (const who of ['s001', 'admin1']) assert.equal((await list(who)).status, 403, `${who} cannot use the department list`)
+  assert.equal((await list('s001')).status, 403, 's001 cannot use the department list')
+  // Since the admin module was merged into complaint-api, `department.list` is answered from the VERIFIED role: an administrator
+  // gets the department catalogue, never the staff complaint list.
+  const adminView = await list('admin1')
+  assert.equal(adminView.status, 200)
+  assert.ok(Array.isArray(adminView.body.departments) && adminView.body.complaints === undefined, 'administrators get departments, not complaints')
 })
 
 test('staff assigned to a department only learn of a new complaint through the function, and removal of the assignment hides it again', async () => {

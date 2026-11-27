@@ -17,5 +17,4 @@ export const COMPLAINT_ATTACHMENTS_BUCKET_ID = BUCKETS.complaintAttachments.id
 
 export const PROFILE_FUNCTION_ID = 'profile-api'
 export const COMPLAINT_FUNCTION_ID = 'complaint-api'
-// export const ADMIN_FUNCTION_ID = 'admin-api'
 export const ADMIN_FUNCTION_ID = 'complaint-api'

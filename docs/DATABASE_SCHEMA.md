@@ -34,7 +34,7 @@ One row per Appwrite account (row ID = the account ID). Mirrors name/email/role/
 
 ## Departments — table ID `departments`
 
-Service departments that receive complaints (ITSC, Cleaning, ...). Never deleted: set status to inactive instead. Every signed-in user may read; changes are made only by the admin-api function (Phase 13), which validates them and keeps an audit trail.
+Service departments that receive complaints (ITSC, Cleaning, ...). Never deleted: set status to inactive instead. Every signed-in user may read; changes are made only by the complaint-api (administrator module) function (Phase 13), which validates them and keeps an audit trail.
 
 - **Row security:** OFF
 - **Table permissions:** `read("users")`
@@ -54,7 +54,7 @@ Service departments that receive complaints (ITSC, Cleaning, ...). Never deleted
 
 ## Department Users — table ID `department_users`
 
-Assigns department staff (users with role `department`) to service departments. One row per (user, department) pair. Staff and administrators may read; changes are made only by the admin-api function (Phase 13).
+Assigns department staff (users with role `department`) to service departments. One row per (user, department) pair. Staff and administrators may read; changes are made only by the complaint-api (administrator module) function (Phase 13).
 
 - **Row security:** OFF
 - **Table permissions:** `read("label:admin")`, `read("label:department")`
@@ -74,7 +74,7 @@ Assigns department staff (users with role `department`) to service departments. 
 
 ## Categories — table ID `categories`
 
-Complaint categories. Each category belongs to exactly one department, which is where its complaints are routed. Every signed-in user may read; changes are made only by the admin-api function (Phase 13).
+Complaint categories. Each category belongs to exactly one department, which is where its complaints are routed. Every signed-in user may read; changes are made only by the complaint-api (administrator module) function (Phase 13).
 
 - **Row security:** OFF
 - **Table permissions:** `read("users")`
@@ -216,7 +216,7 @@ AI analysis of a complaint (Phase 11): short summary, SUGGESTED category, depart
 
 ## Admin Audit — table ID `admin_audit`
 
-Audit trail of sensitive administrator operations (Phase 13): creating accounts, role and status changes, department, category and staff-assignment changes. Written only by the server (admin-api, profile-api); only administrators can read it. Never contains passwords or other secrets.
+Audit trail of sensitive administrator operations (Phase 13): creating accounts, role and status changes, department, category and staff-assignment changes. Written only by the server (complaint-api (administrator module), profile-api); only administrators can read it. Never contains passwords or other secrets.
 
 - **Row security:** OFF
 - **Table permissions:** `read("label:admin")`

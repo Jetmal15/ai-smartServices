@@ -2,7 +2,7 @@
 // Rows use the Phase 7 `users` table fields (accountStatus, academicDepartment, createdAt).
 // It mimics the behaviours the function relies on: unique roll numbers (409), 404 for
 // missing rows/users, label-based roles, and row permissions being recorded at creation.
-import { Permission, Role } from '../../functions/profile-api/node_modules/node-appwrite/dist/index.mjs'
+import { Permission, Role } from 'node-appwrite'
 
 export const PERMISSIONS_FROM_SDK = (id) => [Permission.read(Role.user(id)), Permission.read(Role.label('admin'))]
 

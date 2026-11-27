@@ -24,6 +24,7 @@ import { randomInt } from 'node:crypto'
  * ------------------------------------------------------------------ */
 
 import { handle as handleAdmin } from './admin/handler.js'
+import * as notify from './notifications.js'
 
 export const RULES = {
   title: { min: 5, max: 150 },
@@ -100,8 +101,6 @@ export function roleFromLabels(labels = []) {
 export const complaintPermissions = () => ['read("label:admin")']
 /** Permissions for the attachment once the complaint exists: read-only. Students can no longer replace or delete the evidence. */
 export const lockedFilePermissions = (studentId) => [`read("user:${studentId}")`, 'read("label:admin")']
-/** A notification can be read and marked read by its recipient only. */
-export const notificationPermissions = (userId) => [`read("user:${userId}")`, `update("user:${userId}")`]
 
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g
 const hasContent = (text) => (text.match(/[\p{L}\p{N}]/gu) ?? []).length >= 3
@@ -169,7 +168,12 @@ const fileExtension = (name) => {
   const match = /\.([A-Za-z0-9]{1,8})$/.exec(String(name ?? ''))
   return match ? match[1].toLowerCase() : ''
 }
-const safeFileName = (name) => cleanLine(String(name ?? '').replace(/[\\/]/g, '_')).slice(0, 255) || 'attachment'
+/** A display/download name: no path separators, no characters that are special on Windows or in HTML, no leading dots, no "..". */
+const safeFileName = (name) =>
+  cleanLine(String(name ?? '').replace(/[\\/:*?"<>|]/g, '_'))
+    .replace(/\.{2,}/g, '.')
+    .replace(/^[.\s]+/, '')
+    .slice(0, 255) || 'attachment'
 
 const attachmentOf = (row) => (row.attachmentId ? { name: row.attachmentName ?? 'attachment', mimeType: row.attachmentMime ?? '', size: row.attachmentSize ?? 0 } : null)
 
@@ -243,12 +247,20 @@ export function buildTimeline(row, entries = [], options = {}) {
  * Authentication (same fail-closed approach as profile-api)
  * ------------------------------------------------------------------ */
 
+/** No legitimate request is anywhere near this size (the longest field is a 5000-character description). */
+export const MAX_BODY_CHARS = 64 * 1024
+
 function parseBody(req) {
-  if (req.bodyJson && typeof req.bodyJson === 'object' && !Array.isArray(req.bodyJson)) return req.bodyJson
+  const isObject = (value) => value && typeof value === 'object' && !Array.isArray(value)
+  if (isObject(req.bodyJson)) {
+    if (JSON.stringify(req.bodyJson).length > MAX_BODY_CHARS) throw new HttpError(413, 'payload_too_large', 'That request is too large.')
+    return req.bodyJson
+  }
   const text = req.bodyText ?? (typeof req.body === 'string' ? req.body : '')
+  if (text.length > MAX_BODY_CHARS) throw new HttpError(413, 'payload_too_large', 'That request is too large.')
   try {
     const parsed = JSON.parse(text || '{}')
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed
+    if (isObject(parsed)) return parsed
   } catch {
     /* fall through */
   }
@@ -376,40 +388,16 @@ async function actionSubmit(caller, body, deps) {
     deps.log?.(`could not write the first history entry for ${row.$id}: ${error?.message ?? error}`)
   }
 
-  // Ask the AI analysis function to analyse the stored complaint. Asynchronous and best effort: the student never waits for
-  // it, and if it cannot be started staff can run it from the complaint page. The complaint is already saved.
-  // try {
-  //   await deps.ai.trigger(row.$id, { force: false })
-  // } catch (error) {
-  //   deps.log?.(`could not start AI analysis for ${row.$id}: ${error?.message ?? error}`)
-  // }
-
+  // Ask the AI analysis to analyse the stored complaint. Asynchronous and best effort: the student never waits for it, and if it
+  // cannot be started staff can run it from the complaint page. The complaint is already saved.
   try {
-  console.log('Starting AI analysis for complaint:', row.$id)
-  await deps.ai.trigger(row.$id, { force: false })
-  console.log('AI analysis execution started successfully.')
-} catch (error) {
-  console.error('AI trigger failed:', error)
-  deps.log?.(`could not start AI analysis for ${row.$id}: ${error?.message ?? error}`)
-}
-
-
-  // Confirmation for the student. Best effort: the complaint is already saved.
-  try {
-    await deps.notifications.create(
-      {
-        userId: caller.id,
-        type: 'complaint_submitted',
-        title: 'Complaint submitted',
-        message: `Your complaint ${row.referenceNumber} “${input.title.slice(0, 80)}” was received and sent to ${department.name}.`.slice(0, 1000),
-        complaintId: row.$id,
-        isRead: false,
-      },
-      notificationPermissions(caller.id),
-    )
+    await deps.ai.trigger(row.$id, { force: false })
   } catch (error) {
-    deps.log?.(`could not create confirmation notification for ${row.$id}: ${error?.message ?? error}`)
+    deps.log?.(`could not start AI analysis for ${row.$id}: ${error?.message ?? error}`)
   }
+
+  // Notifications (never throw): a confirmation for the student and a heads-up for the department's staff.
+  await notify.complaintSubmitted(deps, row)
 
   return { complaint: toStudentView(row), duplicate: false }
 }
@@ -575,14 +563,6 @@ async function actorOf(caller, deps) {
   return { role: caller.role, id: caller.id, name: String(row?.name ?? caller.account.name ?? '').trim().slice(0, 128) || null }
 }
 
-async function notifyStudent(deps, row, { type, title, message }) {
-  try {
-    await deps.notifications.create({ userId: row.studentId, type, title, message: message.slice(0, 1000), complaintId: row.$id, isRead: false }, notificationPermissions(row.studentId))
-  } catch (error) {
-    deps.log?.(`could not notify about ${row.$id}: ${error?.message ?? error}`)
-  }
-}
-
 /**
  * Moves a complaint to a new status, records WHO did it and WHEN (history entry + "last updated" on the complaint),
  * keeps an optional PUBLIC remark for the student, and notifies the student. Internal notes do NOT go through here: they
@@ -650,11 +630,7 @@ export async function recordStatusChange(deps, { complaintId, status, remark, ac
     throw error
   }
 
-  await notifyStudent(deps, row, {
-    type: status === 'resolved' ? 'complaint_resolved' : 'status_changed',
-    title: status === 'resolved' ? 'Complaint resolved' : 'Complaint status updated',
-    message: `Your complaint ${row.referenceNumber} is now ${status.replace('_', ' ')}.${cleanedRemark ? ` Department remark: ${cleanedRemark}` : ''}`,
-  })
+  await notify.statusChanged(deps, row, { status, remark: cleanedRemark, stamp })
   return { complaint: updated, previousStatus }
 }
 
@@ -708,11 +684,7 @@ async function actionAddRemark(caller, body, deps) {
   } catch (error) {
     deps.log?.(`could not stamp last update on ${row.$id}: ${error?.message ?? error}`)
   }
-  await notifyStudent(deps, row, {
-    type: 'status_changed',
-    title: 'New remark on your complaint',
-    message: `The department added a remark to your complaint ${row.referenceNumber}: ${remark}`,
-  })
+  await notify.remarkAdded(deps, row, { remark, stamp })
   return staffDetail(await deps.complaints.get(row.$id), deps)
 }
 
@@ -842,7 +814,11 @@ async function actionReassign(caller, body, deps) {
   if (stored?.status === 'completed' && stored.suggestedCategoryId === category.$id) {
     await deps.aiSummaries.update(row.$id, { reviewStatus: 'accepted', reviewedBy: actor.id, reviewedByName: actor.name, reviewedAt: stamp }).catch(() => {})
   }
-  await notifyStudent(deps, row, { type: 'complaint_assigned', title: 'Complaint forwarded', message: `Your complaint ${row.referenceNumber} was forwarded to ${department.name}.` })
+  await notify.complaintReassigned(deps, row, {
+    from: { departmentId: row.departmentId, departmentName: row.departmentName },
+    to: { departmentId: department.$id, departmentName: department.name, categoryName: category.name },
+    stamp,
+  })
   return staffDetail(updated, deps)
 }
 
@@ -910,6 +886,107 @@ async function actionAttachment(caller, body, deps) {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * Notifications (Phase 12). Created only by the server (see notifications.js). Browsers can READ their own rows; everything that
+ * writes goes through the actions below, which touch nothing but `isRead`/`readAt` on the CALLER's own notifications, and let
+ * only administrators send announcements.
+ * ------------------------------------------------------------------ */
+
+const NOTIFICATION_BATCH = 200
+const ANNOUNCE = { title: { min: 3, max: 120 }, message: { min: 3, max: 1000 }, maxRecipients: 5000, windowMinutes: 5 }
+const AUDIENCES = ['all_students', 'all_staff', 'department', 'complaint']
+
+const toNotification = (row) => ({
+  id: row.$id,
+  type: row.type,
+  title: row.title,
+  message: row.message,
+  relatedComplaintId: row.relatedComplaintId ?? null,
+  isRead: Boolean(row.isRead),
+  readAt: row.readAt ?? null,
+  createdAt: row.createdAt ?? row.$createdAt ?? null,
+})
+
+/** Mark ONE of the caller's notifications as read. Someone else's notification looks exactly like a missing one (404). */
+async function actionNotificationMarkRead(caller, body, deps) {
+  const id = typeof body.notificationId === 'string' ? body.notificationId.trim() : ''
+  const notFound = () => new HttpError(404, 'not_found', 'That notification was not found.')
+  if (!ID_PATTERN.test(id)) throw notFound()
+  let row = await deps.notifications.get(id)
+  if (!row || row.userId !== caller.id) throw notFound()
+  if (!row.isRead) row = await deps.notifications.update(id, { isRead: true, readAt: clock(deps).toISOString() })
+  return { notification: toNotification(row), unreadCount: await deps.notifications.countUnread(caller.id) }
+}
+
+/** Mark the caller's unread notifications as read, one batch per call. `more` tells the app to call again. */
+async function actionNotificationMarkAllRead(caller, body, deps) {
+  const unread = await deps.notifications.listUnread(caller.id, NOTIFICATION_BATCH)
+  const stamp = clock(deps).toISOString()
+  let marked = 0
+  for (const row of unread) {
+    if (row.userId !== caller.id) continue // defence in depth: never touch anyone else's row
+    await deps.notifications.update(row.$id, { isRead: true, readAt: stamp })
+    marked += 1
+  }
+  const unreadCount = await deps.notifications.countUnread(caller.id)
+  return { marked, unreadCount, more: unreadCount > 0 && marked > 0 }
+}
+
+/** Administrators only: an important update to all students, all staff, one department's staff or one complaint's student. */
+async function actionNotificationAnnounce(caller, body, deps) {
+  if (caller.role !== ROLES.ADMIN) throw new HttpError(403, 'forbidden', 'Only administrators can send announcements.')
+  const isText = (value) => value === undefined || value === null || typeof value === 'string'
+  if (![body.title, body.message, body.audience, body.departmentId, body.complaintId].every(isText)) throw invalid({}, 'The announcement contains invalid data.')
+  const fields = {}
+  const title = cleanLine(body.title)
+  const message = cleanBlock(body.message)
+  if (title.length < ANNOUNCE.title.min || title.length > ANNOUNCE.title.max || !hasContent(title)) fields.title = `The title must be ${ANNOUNCE.title.min}–${ANNOUNCE.title.max} characters with real words.`
+  if (message.length < ANNOUNCE.message.min || message.length > ANNOUNCE.message.max || !hasContent(message)) fields.message = `The message must be ${ANNOUNCE.message.min}–${ANNOUNCE.message.max} characters with real words.`
+  if (!AUDIENCES.includes(body.audience)) fields.audience = 'Choose who should receive this.'
+  if (Object.keys(fields).length > 0) throw invalid(fields)
+
+  // The server works out who the recipients are; the browser never supplies user IDs.
+  let userIds = []
+  let complaintId = null
+  let target = ''
+  if (body.audience === 'all_students') userIds = await deps.userRows.listIdsByRole(ROLES.STUDENT, ANNOUNCE.maxRecipients)
+  else if (body.audience === 'all_staff') userIds = await deps.userRows.listIdsByRole(ROLES.DEPARTMENT, ANNOUNCE.maxRecipients)
+  else if (body.audience === 'department') {
+    const departmentId = typeof body.departmentId === 'string' ? body.departmentId.trim() : ''
+    if (!ID_PATTERN.test(departmentId) || !(await deps.departments.get(departmentId))) throw invalid({ departmentId: 'Choose a department.' })
+    target = departmentId
+    userIds = await deps.assignments.listUsersOfDepartment(departmentId)
+  } else {
+    const id = typeof body.complaintId === 'string' ? body.complaintId.trim() : ''
+    const complaint = ID_PATTERN.test(id) ? await deps.complaints.get(id) : null
+    if (!complaint) throw invalid({ complaintId: 'That complaint was not found.' })
+    complaintId = complaint.$id
+    target = complaint.$id
+    userIds = [complaint.studentId]
+  }
+  userIds = [...new Set(userIds)].slice(0, ANNOUNCE.maxRecipients)
+  if (userIds.length === 0) throw new HttpError(409, 'no_recipients', 'There is nobody to notify for that choice.')
+
+  // The same announcement sent again within a few minutes is the same announcement: nobody is notified twice.
+  const bucket = Math.floor(clock(deps).getTime() / (ANNOUNCE.windowMinutes * 60_000))
+  const announcementId = ['announce', body.audience, target, title, message, bucket].join('|')
+  const result = await notify.announce(deps, userIds, { announcementId, title, message, complaintId })
+  try {
+    await deps.admin?.audit.record({
+      actorId: caller.id,
+      actorName: String(caller.account.name ?? '').slice(0, 128) || null,
+      action: 'notification.announce',
+      targetType: 'notification',
+      targetId: null,
+      summary: `Sent “${title.slice(0, 80)}” to ${userIds.length} recipient${userIds.length === 1 ? '' : 's'} (${body.audience.replace('_', ' ')}).`,
+      createdAt: clock(deps).toISOString(),
+    })
+  } catch (error) {
+    deps.log?.(`could not record the announcement audit entry: ${error?.message ?? error}`)
+  }
+  return { recipients: userIds.length, ...result }
+}
+
 const ACTIONS = {
   'complaint.submit': actionSubmit,
   'complaint.get': actionGet,
@@ -924,6 +1001,9 @@ const ACTIONS = {
   'ai.review': actionAiReview,
   'ai.applyPriority': actionAiApplyPriority,
   'complaint.reassign': actionReassign,
+  'notification.markRead': actionNotificationMarkRead,
+  'notification.markAllRead': actionNotificationMarkAllRead,
+  'notification.announce': actionNotificationAnnounce,
 }
 
 /**
@@ -955,11 +1035,12 @@ export async function handle({ req }, deps) {
     // The admin and staff APIs both historically use department.list.
     // Keep that action name and select the correct implementation from the
     // server-verified role, never from a frontend-supplied role.
-    if (ADMIN_ACTIONS.has(String(body.action)) || (body.action === 'department.list' && caller.role === ROLES.ADMIN)) {
+    if (typeof body.action !== 'string') throw new HttpError(400, 'unknown_action', 'Unknown action.')
+    if (ADMIN_ACTIONS.has(body.action) || (body.action === 'department.list' && caller.role === ROLES.ADMIN)) {
       return await handleAdmin({ req }, deps.admin)
     }
 
-    if (!Object.hasOwn(ACTIONS, String(body.action))) throw new HttpError(400, 'unknown_action', 'Unknown action.')
+    if (!Object.hasOwn(ACTIONS, body.action)) throw new HttpError(400, 'unknown_action', 'Unknown action.')
     return { status: 200, body: { ok: true, ...(await ACTIONS[body.action](caller, body, deps)) } }
   } catch (error) {
     if (error instanceof HttpError) {

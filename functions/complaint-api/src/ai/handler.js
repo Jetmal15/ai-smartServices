@@ -1,5 +1,5 @@
 /**
- * ai-analysis – AI-assisted analysis of ONE complaint (Phase 11). Runs as an Appwrite Function; the AI provider's API key is a
+ * AI analysis module of complaint-api – AI-assisted analysis of ONE complaint (Phase 11). Runs as an Appwrite Function; the AI provider's API key is a
  * secret of THIS function only (complaint-api and the browser never see it).
  *
  * It is invoked only server-to-server: complaint-api starts it (asynchronously) after a complaint is stored, and when staff ask

@@ -130,7 +130,16 @@ test('ISOLATION: students and administrators cannot use the staff actions; guest
     { action: 'complaint.addNote', complaintId: c.id, note: 'Some note' },
   ]
   for (const who of ['s001', 's002', 'admin1']) {
-    for (const body of bodies) assert.equal((await t.call(who, body)).status, 403, `${who} ${body.action}`)
+    for (const body of bodies) {
+      // `department.list` is shared with the integrated admin module: an administrator gets the department catalogue (no complaints).
+      if (who === 'admin1' && body.action === 'department.list') {
+        const res = await t.call(who, body)
+        assert.equal(res.status, 200)
+        assert.ok(Array.isArray(res.body.departments) && res.body.complaints === undefined, 'administrators never receive the staff complaint list')
+        continue
+      }
+      assert.equal((await t.call(who, body)).status, 403, `${who} ${body.action}`)
+    }
   }
   for (const body of bodies) assert.equal((await t.call('clean1', body, { jwt: 'jwt-s001' })).status, 401, 'wrong token')
   assert.equal(t.row(c.id).status, 'submitted')

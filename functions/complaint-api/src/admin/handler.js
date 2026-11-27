@@ -1,5 +1,5 @@
 /**
- * admin-api – trusted backend for the administrator dashboard (Phase 13). Runs inside an Appwrite Function with a server API key.
+ * Administrator module of complaint-api – trusted backend for the administrator dashboard (Phase 13). Runs inside an Appwrite Function with a server API key.
  *
  *   - dashboard statistics and reports (read-only aggregation across tables)
  *   - departments, categories and department-staff assignments: the ONLY writer of those three tables (browsers, including
@@ -18,6 +18,8 @@ const RECORD_STATUSES = ['active', 'inactive']
 const ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const POSITION_MAX = 100
+/** KEEP IN SYNC with COMPLAINT_RULES.search.max in database/schema.js (a test checks this). */
+const SEARCH_MAX = 100
 const DEFAULT_POSITION = 'Staff'
 /** The resolution report reads at most this many resolved/closed complaints. */
 const MAX_RESOLUTION_SAMPLE = 2000
@@ -159,7 +161,7 @@ async function actionComplaintList(admin, body, deps) {
   if (status && !STATUSES.includes(status)) fields.status = 'Choose a valid status.'
   if (departmentId && (typeof departmentId !== 'string' || !ID_PATTERN.test(departmentId))) fields.departmentId = 'Choose a valid department.'
   if (categoryId && (typeof categoryId !== 'string' || !ID_PATTERN.test(categoryId))) fields.categoryId = 'Choose a valid category.'
-  if (typeof search !== 'string' || search.length > 120) fields.search = 'Search must be at most 120 characters.'
+  if (typeof search !== 'string' || search.length > SEARCH_MAX) fields.search = `Search must be at most ${SEARCH_MAX} characters.`
   if (!['newest', 'oldest'].includes(sort)) fields.sort = 'Choose a valid sort order.'
   if (Object.keys(fields).length) throw invalid(fields)
 
@@ -189,6 +191,8 @@ async function actionComplaintList(admin, body, deps) {
 function toAdminComplaint(row) {
   return {
     id: row.$id,
+    // `reference` is what ComplaintList shows; `referenceNumber` is kept for existing callers.
+    reference: row.referenceNumber,
     referenceNumber: row.referenceNumber,
     title: row.title,
     studentName: row.studentName ?? 'Student',

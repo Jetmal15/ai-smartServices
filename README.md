@@ -100,7 +100,7 @@ Status: Phase 13 (administrator dashboard) complete.
 
 ## Phase 11 notes
 
-- New function `functions/ai-analysis` is the only code that talks to the external AI provider; the API key is a secret of that function. The browser and `complaint-api` never hold or use it. With no key configured, a built-in rule-based **fallback** analyses complaints instead.
+- The AI module (`functions/complaint-api/src/ai`) is the only code that talks to the external AI provider; the API key is a secret of the `complaint-api` function and never reaches the browser. (There is no separate `ai-analysis` function: the analysis runs as an internal asynchronous execution of `complaint-api`.) With no key configured, a built-in rule-based **fallback** analyses complaints instead.
 - Each complaint gets a stored analysis (`ai_summaries`): summary, suggested category, department, priority (Low/Medium/High/Urgent), tone, keywords, confidence, reason. It is **advice only**: staff of the department and administrators can review it, apply the suggested priority, and administrators can move the complaint to another category/department. Students never see AI output.
 - Only the redacted complaint title and description are sent to the provider (no names, roll numbers, e-mails, IDs or files). AI answers are validated; errors and rate limits fall back safely.
 - New admin screen: **Admin → Complaints** (all complaints, details with the AI panel and reassignment).
@@ -115,5 +115,12 @@ Status: Phase 13 (administrator dashboard) complete.
 ## Phase 13 notes
 
 - **Administrator dashboard** (statistics), **user management** (search, role filter, activate/deactivate, provision staff and administrators), **department, category and staff-assignment management**, **complaint monitoring with search/filters and reassignment**, and **reports** (by category, by department, status distribution, resolution statistics, department performance).
-- A new trusted function, `functions/admin-api`, performs every administrator operation on departments, categories and staff and records an audit trail (`admin_audit`). Those tables are now read-only for browsers, even administrators. `profile-api` provisions accounts (one-time temporary password), enforces an optional administrator allowlist (`ADMIN_ALLOWLIST`) and keeps at least one active administrator.
+- The administrator module (`functions/complaint-api/src/admin`, no separate `admin-api` function) performs every administrator operation on departments, categories and staff and records an audit trail (`admin_audit`). Those tables are now read-only for browsers, even administrators. `profile-api` provisions accounts (one-time temporary password), enforces an optional administrator allowlist (`ADMIN_ALLOWLIST`) and keeps at least one active administrator.
 - Setup (new table, tightening permissions, new function, new variables), verification checklist, security notes and limits: `docs/ADMIN_SETUP.md`. Tests: `npm run test:phase13`.
+
+## Phase 14 notes
+
+- **Security audit and integration tests**: `npm run test:phase14` (all phases: `npm test`). The tests run the real browser services and the real Appwrite web SDK against the real `profile-api` and `complaint-api` handlers through an in-process Appwrite gateway (`tests/support/fake-appwrite-http.mjs`).
+- Covers registration, login, logout, session persistence, password recovery, role restrictions, complaints, AI (including provider failures), notifications, Appwrite permissions, input validation, file upload security, secret exposure, protected routes, and cross-user / cross-department access.
+- Fixes in this phase: the notification actions (`notification.markRead`, `markAllRead`, `announce`) and notification creation are wired into `complaint-api`; request bodies are capped at 64 KB; the action name must be a string; attachment names are sanitised; the admin complaint list shows reference numbers.
+- Full report, defects found, limitations and a manual checklist for the real Appwrite project: `docs/PHASE14_TEST_REPORT.md`.

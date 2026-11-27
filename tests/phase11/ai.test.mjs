@@ -1,16 +1,16 @@
 // Phase 11 – AI complaint analysis tests. Run: npm run test:phase11
-// No network and no real AI provider: the real provider adapter, redaction, validation, fallback and the real ai-analysis and
+// No network and no real AI provider: the real provider adapter, redaction, validation, fallback and the real AI analysis module and
 // complaint-api handlers run against a fake `fetch` and an in-memory database built from database/schema.js.
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { AI_RULES, ENUMS, TABLE_IDS, TABLES } from '../../database/schema.js'
-import { analyzeComplaint, buildPrompt, FALLBACK_MODEL, handle as handleAi } from '../../functions/ai-analysis/src/handler.js'
-import { analyzeWithRules } from '../../functions/ai-analysis/src/fallback.js'
-import { createProvider, ProviderError, providerConfigFromEnv } from '../../functions/ai-analysis/src/provider.js'
-import { redact } from '../../functions/ai-analysis/src/redact.js'
-import { AnalysisError, parseAiJson, PRIORITIES, RULES as AI_VALIDATION_RULES, validateAnalysis } from '../../functions/ai-analysis/src/validate.js'
+import { analyzeComplaint, buildPrompt, FALLBACK_MODEL, handle as handleAi } from '../../functions/complaint-api/src/ai/handler.js'
+import { analyzeWithRules } from '../../functions/complaint-api/src/ai/fallback.js'
+import { createProvider, ProviderError, providerConfigFromEnv } from '../../functions/complaint-api/src/ai/provider.js'
+import { redact } from '../../functions/complaint-api/src/ai/redact.js'
+import { AnalysisError, parseAiJson, PRIORITIES, RULES as AI_VALIDATION_RULES, validateAnalysis } from '../../functions/complaint-api/src/ai/validate.js'
 import { AI_MAX_ATTEMPTS, handle } from '../../functions/complaint-api/src/handler.js'
 import { createDatabaseServices } from '../../src/services/db/factory.js'
 import { createComplaintBackend } from '../support/fake-complaint-backend.mjs'
@@ -76,18 +76,19 @@ const ok = (res) => assert.equal(res.body.ok, true, JSON.stringify(res.body))
 
 /* ============================================================== secrets: never in the browser */
 
-test('SECRETS: the AI key and provider URLs exist only in the ai-analysis function, never in the React app or .env files', () => {
+test('SECRETS: the AI key and provider URLs exist only in the server-side AI module of complaint-api, never in the React app or .env files', () => {
   const walk = (dir) => readdirSync(dir).flatMap((name) => (statSync(join(dir, name)).isDirectory() ? walk(join(dir, name)) : [join(dir, name)]))
   const root = new URL('../../', import.meta.url).pathname
   const forbidden = /api\.openai\.com|api\.anthropic\.com|AI_API_KEY|AI_PROVIDER|sk-[A-Za-z0-9]{8}|VITE_AI|x-api-key/i
   for (const file of walk(join(root, 'src'))) assert.ok(!forbidden.test(readFileSync(file, 'utf8')), `${file} must not contain AI provider details`)
   assert.ok(!/AI_|API_KEY/i.test(read('../../.env.example')), '.env.example has no AI settings')
-  assert.ok(!/AI_API_KEY|api\.openai|api\.anthropic/.test(read('../../functions/complaint-api/src/handler.js') + read('../../functions/complaint-api/src/main.js')), 'complaint-api never sees the AI key')
-  const main = read('../../functions/ai-analysis/src/main.js')
-  assert.ok(main.includes('process.env'), 'the provider is configured from function variables')
-  assert.ok(!/AI_API_KEY\s*=\s*['"]/.test(main))
+  assert.ok(!/AI_API_KEY|GROQ_API_KEY|api\.openai|api\.anthropic/.test(read('../../functions/complaint-api/src/handler.js') + read('../../functions/complaint-api/src/main.js')), 'the request handler and the wiring never name the AI key or provider URLs')
+  const main = read('../../functions/complaint-api/src/main.js')
+  assert.ok(main.includes('providerConfigFromEnv(process.env)'), 'the provider is configured from function variables')
+  const providerCode = read('../../functions/complaint-api/src/ai/provider.js')
+  assert.ok(!/(AI_API_KEY|GROQ_API_KEY)\s*[:=]\s*['"][^'"]+['"]/.test(providerCode), 'no key is hard-coded')
   // provider code must not log or throw the key
-  const providerSource = read('../../functions/ai-analysis/src/provider.js')
+  const providerSource = read('../../functions/complaint-api/src/ai/provider.js')
   assert.ok(!/console\.|log\(/.test(providerSource))
 })
 
@@ -477,7 +478,7 @@ test('FALLBACK: if the analysis function cannot even be started, submitting stil
 
 /* ============================================================== the analysis function itself: limits and guards */
 
-test('ai-analysis: no duplicate work, attempt limit, pending guard, review reset', async () => {
+test('AI module: no duplicate work, attempt limit, pending guard, review reset', async () => {
   const t = await setup()
   const f = t.useAi(sensibleAi())
   const c = await t.submit('s001')
@@ -507,7 +508,7 @@ test('ai-analysis: no duplicate work, attempt limit, pending guard, review reset
   await assert.rejects(analyzeComplaint(t.b.aiDeps, '../x', {}), (e) => e.status === 400)
 })
 
-test('ai-analysis: only the server can call it (never a browser user)', async () => {
+test('AI module: only the server can call it (never a browser user)', async () => {
   const t = await setup()
   const c = await t.submit('s001')
   const call = (headers, body) => handleAi({ req: { headers, bodyJson: body } }, t.b.aiDeps)

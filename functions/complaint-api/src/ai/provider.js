@@ -89,7 +89,6 @@ export function createProvider(
     sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   } = {}
 ) {
-  // const supported = ['openai', 'anthropic', 'gemini'].includes(config.provider)
   const supported = ['openai', 'anthropic', 'gemini', 'groq'].includes(config.provider)
 
   const configured = Boolean(
@@ -262,13 +261,6 @@ export function createProvider(
         'The AI provider rejected the credentials.'
       )
     }
-
-    // if (response.status >= 500) {
-    //   throw new ProviderError(
-    //     'unavailable',
-    //     'The AI provider is temporarily unavailable.'
-    //   )
-    // }
 
     if (response.status >= 500) {
   throw new ProviderError(

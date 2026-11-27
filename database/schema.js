@@ -93,7 +93,7 @@ export const TABLES = Object.freeze({
   departments: {
     id: TABLE_IDS.departments,
     name: 'Departments',
-    purpose: 'Service departments that receive complaints (ITSC, Cleaning, ...). Never deleted: set status to inactive instead. Every signed-in user may read; changes are made only by the admin-api function (Phase 13), which validates them and keeps an audit trail.',
+    purpose: 'Service departments that receive complaints (ITSC, Cleaning, ...). Never deleted: set status to inactive instead. Every signed-in user may read; changes are made only by the complaint-api (administrator module) function (Phase 13), which validates them and keeps an audit trail.',
     rowSecurity: false,
     permissions: [p('read', 'users')],
     columns: [
@@ -112,7 +112,7 @@ export const TABLES = Object.freeze({
   departmentUsers: {
     id: TABLE_IDS.departmentUsers,
     name: 'Department Users',
-    purpose: 'Assigns department staff (users with role `department`) to service departments. One row per (user, department) pair. Staff and administrators may read; changes are made only by the admin-api function (Phase 13).',
+    purpose: 'Assigns department staff (users with role `department`) to service departments. One row per (user, department) pair. Staff and administrators may read; changes are made only by the complaint-api (administrator module) function (Phase 13).',
     rowSecurity: false,
     permissions: [p('read', ADMIN), p('read', STAFF)],
     columns: [
@@ -131,7 +131,7 @@ export const TABLES = Object.freeze({
   categories: {
     id: TABLE_IDS.categories,
     name: 'Categories',
-    purpose: 'Complaint categories. Each category belongs to exactly one department, which is where its complaints are routed. Every signed-in user may read; changes are made only by the admin-api function (Phase 13).',
+    purpose: 'Complaint categories. Each category belongs to exactly one department, which is where its complaints are routed. Every signed-in user may read; changes are made only by the complaint-api (administrator module) function (Phase 13).',
     rowSecurity: false,
     permissions: [p('read', 'users')],
     columns: [
@@ -273,7 +273,7 @@ export const TABLES = Object.freeze({
     id: TABLE_IDS.adminAudit,
     name: 'Admin Audit',
     purpose:
-      'Audit trail of sensitive administrator operations (Phase 13): creating accounts, role and status changes, department, category and staff-assignment changes. Written only by the server (admin-api, profile-api); only administrators can read it. Never contains passwords or other secrets.',
+      'Audit trail of sensitive administrator operations (Phase 13): creating accounts, role and status changes, department, category and staff-assignment changes. Written only by the server (complaint-api (administrator module), profile-api); only administrators can read it. Never contains passwords or other secrets.',
     rowSecurity: false,
     permissions: [p('read', ADMIN)],
     columns: [
@@ -396,7 +396,7 @@ export const BUCKETS = Object.freeze({
 })
 
 /* ------------------------------------------------------------------ *
- * AI analysis rules (Phase 11). Mirrored in functions/ai-analysis and functions/complaint-api (tests keep them equal).
+ * AI analysis rules (Phase 11). Mirrored in functions/complaint-api/src/ai (tests keep them equal).
  * ------------------------------------------------------------------ */
 
 export const AI_RULES = Object.freeze({

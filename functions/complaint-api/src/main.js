@@ -2,7 +2,6 @@
 import { Account, Client, Functions, ID, Query, Storage, TablesDB, Users } from 'node-appwrite'
 import { timingSafeEqual } from 'node:crypto'
 import { handle } from './handler.js'
-// import { analyzeComplaint, analysisPermissions } from './ai/handler.js'
 import { analyzeComplaint } from './ai/handler.js'
 import { createProvider, providerConfigFromEnv } from './ai/provider.js'
 
@@ -63,7 +62,19 @@ export function createDeps({ endpoint, projectId, apiKey, databaseId, ids, log, 
     },
 
     users: { get: (userId) => users.get({ userId }).catch(orNull) },
-    userRows: row(ids.users),
+    userRows: {
+      ...row(ids.users),
+      /** IDs of the ACTIVE users with a role (announcement recipients). */
+      async listIdsByRole(role, max) {
+        const rows = await listAllPages((queries) =>
+          tables.listRows({
+            databaseId,
+            tableId: ids.users,
+            queries: [Query.equal('role', [role]), Query.equal('accountStatus', ['active']), ...queries],
+          }), max)
+        return rows.map((r) => r.$id)
+      },
+    },
     departments: row(ids.departments),
     categories: {
       ...row(ids.categories),
@@ -95,6 +106,15 @@ export function createDeps({ endpoint, projectId, apiKey, databaseId, ids, log, 
     },
 
     assignments: {
+      async listUsersOfDepartment(departmentId) {
+        const rows = await listAllPages((queries) =>
+          tables.listRows({
+            databaseId,
+            tableId: ids.departmentUsers,
+            queries: [Query.equal('departmentId', [departmentId]), ...queries],
+          }))
+        return rows.map((r) => r.userId)
+      },
       listForUser: (userId) =>
         listAllPages((queries) =>
           tables.listRows({
@@ -215,8 +235,26 @@ export function createDeps({ endpoint, projectId, apiKey, databaseId, ids, log, 
     },
 
     notifications: {
-      create: (data, permissions) =>
-        tables.createRow({ databaseId, tableId: ids.notifications, rowId: ID.unique(), data, permissions }),
+      // The row ID is a hash of the event (see notifications.js): a second row for the same event is refused with a 409.
+      create: (rowId, data, permissions) => tables.createRow({ databaseId, tableId: ids.notifications, rowId, data, permissions }),
+      get: (rowId) => tables.getRow({ databaseId, tableId: ids.notifications, rowId }).catch(orNull),
+      update: (rowId, data) => tables.updateRow({ databaseId, tableId: ids.notifications, rowId, data }),
+      async listUnread(userId, max) {
+        const page = await tables.listRows({
+          databaseId,
+          tableId: ids.notifications,
+          queries: [Query.equal('userId', [userId]), Query.equal('isRead', [false]), Query.limit(max)],
+        })
+        return page.rows
+      },
+      async countUnread(userId) {
+        const page = await tables.listRows({
+          databaseId,
+          tableId: ids.notifications,
+          queries: [Query.equal('userId', [userId]), Query.equal('isRead', [false]), Query.limit(1)],
+        })
+        return page.total
+      },
     },
 
     files: {

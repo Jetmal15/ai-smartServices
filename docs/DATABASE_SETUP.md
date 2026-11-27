@@ -10,9 +10,9 @@ The exact columns, types, indexes and permissions of every table are in
 | Table (ID) | Purpose | Browser access |
 |---|---|---|
 | `users` | One row per Appwrite account. **Replaces the Phase 6 `profiles` table.** | Read own row (admins: all). No writes. |
-| `departments` | Service departments (ITSC, Cleaning, …) | Signed-in users read; written only by `admin-api` (Phase 13) |
-| `department_users` | Which staff belong to which department | Staff + admins read; written only by `admin-api` (Phase 13) |
-| `categories` | Complaint categories → each routed to one department | Signed-in users read; written only by `admin-api` (Phase 13) |
+| `departments` | Service departments (ITSC, Cleaning, …) | Signed-in users read; written only by the `complaint-api` administrator module (Phase 13) |
+| `department_users` | Which staff belong to which department | Staff + admins read; written only by the `complaint-api` administrator module (Phase 13) |
+| `categories` | Complaint categories → each routed to one department | Signed-in users read; written only by the `complaint-api` administrator module (Phase 13) |
 | `complaints` | Student complaints (**Phase 8**, see `COMPLAINTS_SETUP.md`) | Owner + admins read; created only by `complaint-api` |
 | `ai_summaries`, `notifications` | **Structure only** (notifications are first used by Phase 8's confirmation) | Default-deny / recipient only |
 

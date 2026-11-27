@@ -33,8 +33,8 @@ function setup() {
       data: { userId: id, name: `User ${id}`, email: `${id}@test.edu`, role, accountStatus: 'active', createdAt: '2026-11-01T09:00:00.000Z', ...extra },
       permissions: [`read("user:${id}")`, 'read("label:admin")'],
     })
-  // Since Phase 13 departments, categories and staff assignments are written only by the server (admin-api). `asAdmin` runs the same
-  // service code with server rights, which is what the admin-api function does; browsers (including administrators) cannot write.
+  // Since Phase 13 departments, categories and staff assignments are written only by the server (the complaint-api administrator module). `asAdmin` runs the same
+  // service code with server rights, which is what the administrator module does; browsers (including administrators) cannot write.
   return { fake, services, asAdmin: services(SERVER), asServer: services(SERVER), addUser }
 }
 

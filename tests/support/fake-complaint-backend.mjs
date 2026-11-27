@@ -1,10 +1,10 @@
-// Test backend for functions/complaint-api (TEST ONLY).
+// Test backend for functions/complaint-api (TEST ONLY): complaints, the integrated AI analysis and the integrated admin module.
 // Complaint, user, department, category, assignment and notification rows live in the schema-driven fake TablesDB
 // (tests/support/fake-tablesdb.mjs), so everything the function writes is validated against database/schema.js
 // (columns, sizes, enums, unique indexes) and read permissions are evaluated per actor. Storage is a tiny in-memory fake.
 import { TABLE_IDS, TABLES } from '../../database/schema.js'
-import { analyzeComplaint } from '../../functions/ai-analysis/src/handler.js'
-import { createProvider } from '../../functions/ai-analysis/src/provider.js'
+import { analyzeComplaint } from '../../functions/complaint-api/src/ai/handler.js'
+import { createProvider } from '../../functions/complaint-api/src/ai/provider.js'
 import { createFakeTablesDB, Query } from './fake-tablesdb.mjs'
 
 export function createComplaintBackend({ now = new Date('2026-11-22T10:00:00.000Z') } = {}) {
@@ -29,7 +29,7 @@ export function createComplaintBackend({ now = new Date('2026-11-22T10:00:00.000
   const row = (tableId) => ({ get: (rowId) => server.getRow({ databaseId: db, tableId, rowId }).catch(orNull) })
   const create = (tableId, rowId, data, permissions) => server.createRow({ databaseId: db, tableId, rowId, data, permissions })
 
-  // The ai-analysis function's backend (same fake database). Its AI provider is swapped by tests via aiControl.provider.
+  // The AI analysis backend (functions/complaint-api/src/ai) (same fake database). Its AI provider is swapped by tests via aiControl.provider.
   const aiDeps = {
     log: (m) => logs.push(`[ai] ${m}`),
     now: () => new Date(clock),
@@ -55,9 +55,79 @@ export function createComplaintBackend({ now = new Date('2026-11-22T10:00:00.000
     },
   }
 
+
+  // The integrated administrator module's backend (mirrors `deps.admin` in functions/complaint-api/src/main.js).
+  const adminControl = { failAudit: false }
+  const all = async (tableId, queries = [], max = 5000) => {
+    const rows = []
+    while (rows.length < max) {
+      const page = await server.listRows({ databaseId: db, tableId, queries: [...queries, Query.limit(100), Query.offset(rows.length)] })
+      rows.push(...page.rows)
+      if (page.rows.length < 100) break
+    }
+    return rows
+  }
+  const countRows = async (tableId, queries = []) => (await server.listRows({ databaseId: db, tableId, queries: [...queries, Query.limit(1)] })).total
+  const records = (tableId) => ({
+    get: (id) => row(tableId).get(id),
+    listAll: () => all(tableId),
+    create: (data) => server.createRow({ databaseId: db, tableId, rowId: 'unique()', data }),
+    update: (id, data) => server.updateRow({ databaseId: db, tableId, rowId: id, data }),
+    count: ({ status } = {}) => countRows(tableId, status ? [Query.equal('status', [status])] : []),
+  })
+  const complaintFilters = ({ status, statuses, categoryId, departmentId }) => [
+    ...(status ? [Query.equal('status', [status])] : []),
+    ...(statuses ? [Query.equal('status', statuses)] : []),
+    ...(categoryId ? [Query.equal('categoryId', [categoryId])] : []),
+    ...(departmentId ? [Query.equal('departmentId', [departmentId])] : []),
+  ]
+  const order = (sort) => (sort === 'oldest' ? Query.orderAsc('$createdAt') : Query.orderDesc('$createdAt'))
+  const adminDeps = {
+    log: (m) => logs.push(m),
+    now: () => new Date(clock),
+    verifyJwt: async (jwt) => {
+      if (!jwts.has(jwt)) throw new Error('bad jwt')
+      return jwts.get(jwt)
+    },
+    users: { get: async (id) => accounts.get(id) ?? null },
+    userRows: {
+      get: (id) => row(TABLE_IDS.users).get(id),
+      count: ({ role } = {}) => countRows(TABLE_IDS.users, role ? [Query.equal('role', [role])] : []),
+      listByRole: (role, max) => all(TABLE_IDS.users, [Query.equal('role', [role])], max),
+    },
+    departments: records(TABLE_IDS.departments),
+    categories: records(TABLE_IDS.categories),
+    departmentUsers: {
+      get: (id) => row(TABLE_IDS.departmentUsers).get(id),
+      listAll: () => all(TABLE_IDS.departmentUsers),
+      listByDepartment: (departmentId) => all(TABLE_IDS.departmentUsers, [Query.equal('departmentId', [departmentId]), Query.orderAsc('$createdAt')]),
+      listByUser: (userId) => all(TABLE_IDS.departmentUsers, [Query.equal('userId', [userId])]),
+      create: (data) => server.createRow({ databaseId: db, tableId: TABLE_IDS.departmentUsers, rowId: 'unique()', data }),
+      update: (id, data) => server.updateRow({ databaseId: db, tableId: TABLE_IDS.departmentUsers, rowId: id, data }),
+      remove: (id) => server.deleteRow({ databaseId: db, tableId: TABLE_IDS.departmentUsers, rowId: id }),
+    },
+    complaints: {
+      count: (filters = {}) => countRows(TABLE_IDS.complaints, complaintFilters(filters)),
+      list: async ({ sort = 'newest', limit = 20, offset = 0, ...filters } = {}) => {
+        const page = await server.listRows({ databaseId: db, tableId: TABLE_IDS.complaints, queries: [...complaintFilters(filters), order(sort), Query.limit(limit), Query.offset(offset)] })
+        return { rows: page.rows, total: page.total }
+      },
+      listAll: ({ sort = 'newest', max = 2000, ...filters } = {}) => all(TABLE_IDS.complaints, [...complaintFilters(filters), order(sort)], max),
+      listFinished: (max) => all(TABLE_IDS.complaints, [Query.equal('status', ['resolved', 'closed']), Query.orderDesc('$createdAt')], max),
+    },
+    audit: {
+      record: (entry) => {
+        if (adminControl.failAudit) return Promise.reject(new Error('audit down'))
+        return server.createRow({ databaseId: db, tableId: TABLE_IDS.adminAudit, rowId: 'unique()', data: entry, permissions: ['read(\"label:admin\")'] })
+      },
+      list: async (limit) => (await server.listRows({ databaseId: db, tableId: TABLE_IDS.adminAudit, queries: [Query.orderDesc('createdAt'), Query.orderDesc('$createdAt'), Query.limit(limit)] })).rows,
+    },
+  }
+
   const deps = {
     log: (m) => logs.push(m),
     now: () => new Date(clock),
+    admin: adminDeps,
     randomChars: (attempt) => randomQueue[attempt],
     verifyJwt: async (jwt) => {
       if (!jwts.has(jwt)) throw new Error('bad jwt')
@@ -196,6 +266,7 @@ export function createComplaintBackend({ now = new Date('2026-11-22T10:00:00.000
     randomQueue,
     failHistory,
     notificationControl,
+    adminControl,
     aiRuns,
     aiControl,
     aiDeps,

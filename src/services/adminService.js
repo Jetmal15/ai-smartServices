@@ -2,7 +2,7 @@ import { ADMIN_FUNCTION_ID } from '../lib/appwrite/index.js'
 import { callFunction } from './complaintService.js'
 
 /**
- * Client for the `admin-api` Appwrite Function: dashboard numbers, reports, and the ONLY way departments, categories and staff
+ * Client for the administrator module of the `complaint-api` Appwrite Function: dashboard numbers, reports, and the ONLY way departments, categories and staff
  * assignments are changed. The function checks on the server, for every call, that the signed-in user is an administrator,
  * validates the input, and records the change in the audit trail. (Accounts and roles: services/profileService.js.)
  */
